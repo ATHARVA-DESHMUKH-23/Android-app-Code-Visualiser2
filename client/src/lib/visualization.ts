@@ -12,7 +12,7 @@ interface Node {
 interface Link {
   source: string;
   target: string;
-  type: 'dependency' | 'calls' | 'inheritance';
+  type: 'dependency' | 'calls' | 'extends' | 'implements';
 }
 
 export function createVisualization(
@@ -24,40 +24,61 @@ export function createVisualization(
   // Clear previous visualization
   container.innerHTML = '';
 
-  if (components.length === 0) return;
+  if (components.length === 0) {
+    container.innerHTML = '<div class="flex items-center justify-center h-full text-gray-500">No components to display</div>';
+    return;
+  }
 
   // Create nodes and links
   const nodes = createNodes(components);
   const links = createLinks(components, nodes);
 
-  // Create SVG container
+  // Calculate required canvas dimensions
+  const maxX = Math.max(...nodes.map(n => n.x)) + 300;
+  const maxY = Math.max(...nodes.map(n => n.y)) + 150;
+  
+  // Set container dimensions to accommodate all nodes
+  container.style.position = 'relative';
+  container.style.width = `${Math.max(maxX, 1200)}px`;
+  container.style.height = `${Math.max(maxY, 800)}px`;
+
+  // Create SVG container with proper dimensions
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-  svg.style.width = '100%';
-  svg.style.height = '100%';
+  svg.style.width = `${Math.max(maxX, 1200)}px`;
+  svg.style.height = `${Math.max(maxY, 800)}px`;
   svg.style.position = 'absolute';
   svg.style.top = '0';
   svg.style.left = '0';
   svg.style.zIndex = '1';
+  svg.style.pointerEvents = 'none';
 
-  // Add arrow markers
+  // Add arrow markers for different relationship types
   const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
-  const marker = document.createElementNS('http://www.w3.org/2000/svg', 'marker');
-  marker.setAttribute('id', 'arrowhead');
-  marker.setAttribute('markerWidth', '10');
-  marker.setAttribute('markerHeight', '7');
-  marker.setAttribute('refX', '9');
-  marker.setAttribute('refY', '3.5');
-  marker.setAttribute('orient', 'auto');
+  
+  const createArrowMarker = (id: string, color: string) => {
+    const marker = document.createElementNS('http://www.w3.org/2000/svg', 'marker');
+    marker.setAttribute('id', id);
+    marker.setAttribute('markerWidth', '10');
+    marker.setAttribute('markerHeight', '7');
+    marker.setAttribute('refX', '9');
+    marker.setAttribute('refY', '3.5');
+    marker.setAttribute('orient', 'auto');
 
-  const polygon = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
-  polygon.setAttribute('points', '0 0, 10 3.5, 0 7');
-  polygon.setAttribute('fill', '#0366D6');
+    const polygon = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+    polygon.setAttribute('points', '0 0, 10 3.5, 0 7');
+    polygon.setAttribute('fill', color);
 
-  marker.appendChild(polygon);
-  defs.appendChild(marker);
+    marker.appendChild(polygon);
+    return marker;
+  };
+
+  defs.appendChild(createArrowMarker('arrowhead-blue', '#0366D6'));
+  defs.appendChild(createArrowMarker('arrowhead-green', '#10B981'));
+  defs.appendChild(createArrowMarker('arrowhead-orange', '#F59E0B'));
+  defs.appendChild(createArrowMarker('arrowhead-gray', '#6B7280'));
   svg.appendChild(defs);
 
-  // Draw links
+  // Draw links with proper styling
   links.forEach(link => {
     const sourceNode = nodes.find(n => n.id === link.source);
     const targetNode = nodes.find(n => n.id === link.target);
@@ -68,13 +89,36 @@ export function createVisualization(
       line.setAttribute('y1', sourceNode.y.toString());
       line.setAttribute('x2', targetNode.x.toString());
       line.setAttribute('y2', targetNode.y.toString());
-      line.setAttribute('stroke', link.type === 'dependency' ? '#28A745' : '#0366D6');
-      line.setAttribute('stroke-width', '2');
+      line.setAttribute('stroke-opacity', '0.8');
       
-      if (link.type === 'dependency') {
-        line.setAttribute('stroke-dasharray', '5,5');
-      } else {
-        line.setAttribute('marker-end', 'url(#arrowhead)');
+      // Style based on relationship type
+      switch (link.type) {
+        case 'dependency':
+          line.setAttribute('stroke', '#6B7280');
+          line.setAttribute('stroke-width', '2');
+          line.setAttribute('stroke-dasharray', '5,5');
+          line.setAttribute('marker-end', 'url(#arrowhead-gray)');
+          break;
+        case 'calls':
+          line.setAttribute('stroke', '#0366D6');
+          line.setAttribute('stroke-width', '3');
+          line.setAttribute('marker-end', 'url(#arrowhead-blue)');
+          break;
+        case 'extends':
+          line.setAttribute('stroke', '#10B981');
+          line.setAttribute('stroke-width', '3');
+          line.setAttribute('marker-end', 'url(#arrowhead-green)');
+          break;
+        case 'implements':
+          line.setAttribute('stroke', '#F59E0B');
+          line.setAttribute('stroke-width', '2');
+          line.setAttribute('stroke-dasharray', '3,3');
+          line.setAttribute('marker-end', 'url(#arrowhead-orange)');
+          break;
+        default:
+          line.setAttribute('stroke', '#6B7280');
+          line.setAttribute('stroke-width', '2');
+          line.setAttribute('marker-end', 'url(#arrowhead-gray)');
       }
       
       svg.appendChild(line);
@@ -98,43 +142,74 @@ function createNodes(components: CodeComponent[]): Node[] {
   const methods = components.filter(c => c.type === 'method');
   const functions = components.filter(c => c.type === 'function');
 
-  let xOffset = 200;
-  let yOffset = 100;
+  const nodeWidth = 200;
+  const horizontalSpacing = 280;
+  const verticalSpacing = 120;
+  const startX = 150;
+  let currentY = 80;
 
-  // Position classes at the top
+  // Group methods by their parent class
+  const methodsByClass = new Map<string, CodeComponent[]>();
+  methods.forEach(method => {
+    const parentClass = (method as any).parentClass || 'Unknown';
+    if (!methodsByClass.has(parentClass)) {
+      methodsByClass.set(parentClass, []);
+    }
+    methodsByClass.get(parentClass)!.push(method);
+  });
+
+  // Calculate grid dimensions
+  const itemsPerRow = Math.max(3, Math.min(6, Math.ceil(Math.sqrt(classes.length + methods.length + functions.length))));
+
+  // Position classes first
   classes.forEach((component, index) => {
+    const row = Math.floor(index / itemsPerRow);
+    const col = index % itemsPerRow;
+    
     nodes.push({
       id: component.id,
       name: component.name,
       type: component.type,
-      x: xOffset + (index * 200),
-      y: yOffset,
+      x: startX + (col * horizontalSpacing),
+      y: currentY + (row * verticalSpacing),
       component
     });
   });
 
-  // Position methods in the middle
-  yOffset += 150;
+  // Update Y position for methods
+  const classRows = Math.ceil(classes.length / itemsPerRow);
+  currentY += classRows * verticalSpacing + 50;
+
+  // Position methods
   methods.forEach((component, index) => {
+    const row = Math.floor(index / itemsPerRow);
+    const col = index % itemsPerRow;
+    
     nodes.push({
       id: component.id,
       name: component.name,
       type: component.type,
-      x: xOffset + (index * 180),
-      y: yOffset,
+      x: startX + (col * horizontalSpacing),
+      y: currentY + (row * verticalSpacing),
       component
     });
   });
 
-  // Position functions at the bottom
-  yOffset += 150;
+  // Update Y position for functions
+  const methodRows = Math.ceil(methods.length / itemsPerRow);
+  currentY += methodRows * verticalSpacing + 50;
+
+  // Position functions
   functions.forEach((component, index) => {
+    const row = Math.floor(index / itemsPerRow);
+    const col = index % itemsPerRow;
+    
     nodes.push({
       id: component.id,
       name: component.name,
       type: component.type,
-      x: xOffset + (index * 180),
-      y: yOffset,
+      x: startX + (col * horizontalSpacing),
+      y: currentY + (row * verticalSpacing),
       component
     });
   });

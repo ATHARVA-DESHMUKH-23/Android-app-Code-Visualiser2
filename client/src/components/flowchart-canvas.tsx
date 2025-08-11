@@ -170,8 +170,31 @@ export default function FlowchartCanvas({
           data-testid="visualization-canvas"
         />
 
+        {/* Relationship Legend */}
+        <div className="absolute top-4 right-4 bg-white/95 backdrop-blur-sm rounded-lg p-4 text-xs pointer-events-none shadow-lg">
+          <h4 className="font-semibold text-gray-800 mb-2">Relationships</h4>
+          <div className="space-y-2">
+            <div className="flex items-center">
+              <div className="w-6 h-0.5 bg-blue-600 mr-2"></div>
+              <span className="text-gray-700">Method Calls</span>
+            </div>
+            <div className="flex items-center">
+              <div className="w-6 h-0.5 bg-green-600 mr-2"></div>
+              <span className="text-gray-700">Inheritance</span>
+            </div>
+            <div className="flex items-center">
+              <div className="w-6 h-0.5 bg-orange-500 border-dashed border-b mr-2"></div>
+              <span className="text-gray-700">Implements</span>
+            </div>
+            <div className="flex items-center">
+              <div className="w-6 h-0.5 bg-gray-500 border-dashed border-b mr-2"></div>
+              <span className="text-gray-700">Dependencies</span>
+            </div>
+          </div>
+        </div>
+
         {/* Pan/Zoom Instructions */}
-        <div className="absolute bottom-4 left-4 bg-white/90 backdrop-blur-sm rounded-lg p-3 text-xs text-gray-600 pointer-events-none">
+        <div className="absolute bottom-4 left-4 bg-white/95 backdrop-blur-sm rounded-lg p-3 text-xs text-gray-600 pointer-events-none shadow-lg">
           <div className="flex items-center space-x-4">
             <span className="flex items-center">
               <Move className="h-3 w-3 mr-1" />
