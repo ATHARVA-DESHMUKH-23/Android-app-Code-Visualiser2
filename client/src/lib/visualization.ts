@@ -144,35 +144,80 @@ function createNodes(components: CodeComponent[]): Node[] {
 
 function createLinks(components: CodeComponent[], nodes: Node[]): Link[] {
   const links: Link[] = [];
+  const nodeMap = new Map(nodes.map(n => [n.name, n]));
 
   components.forEach(component => {
-    // Create dependency links
+    const sourceNode = nodeMap.get(component.name);
+    if (!sourceNode) return;
+
+    // Create dependency links (what this component uses)
     component.dependencies?.forEach(dep => {
-      const targetNode = nodes.find(n => 
-        n.name === dep || n.component.signature?.includes(dep)
-      );
-      if (targetNode) {
-        links.push({
-          source: component.id,
-          target: targetNode.id,
-          type: 'dependency'
-        });
+      const targetNode = nodeMap.get(dep);
+      if (targetNode && targetNode.id !== sourceNode.id) {
+        // Avoid duplicate links
+        const existingLink = links.find(l => 
+          l.source === sourceNode.id && l.target === targetNode.id
+        );
+        if (!existingLink) {
+          links.push({
+            source: sourceNode.id,
+            target: targetNode.id,
+            type: 'dependency'
+          });
+        }
       }
     });
 
-    // Create "called by" links
+    // Create "called by" links (what calls this component)
     component.calledBy?.forEach(caller => {
-      const sourceNode = nodes.find(n => 
-        n.name === caller || n.component.signature?.includes(caller)
-      );
-      if (sourceNode) {
-        links.push({
-          source: sourceNode.id,
-          target: component.id,
-          type: 'calls'
-        });
+      const callerNode = nodeMap.get(caller);
+      if (callerNode && callerNode.id !== sourceNode.id) {
+        // Avoid duplicate links
+        const existingLink = links.find(l => 
+          l.source === callerNode.id && l.target === sourceNode.id
+        );
+        if (!existingLink) {
+          links.push({
+            source: callerNode.id,
+            target: sourceNode.id,
+            type: 'calls'
+          });
+        }
       }
     });
+
+    // Create inheritance links (extends/implements)
+    if (component.type === 'class' || component.type === 'interface') {
+      // Look for extends/implements in signature
+      const signature = component.signature || '';
+      const extendsMatch = signature.match(/extends\s+(\w+)/);
+      const implementsMatch = signature.match(/implements\s+([\w\s,]+)/);
+      
+      if (extendsMatch) {
+        const parentNode = nodeMap.get(extendsMatch[1]);
+        if (parentNode) {
+          links.push({
+            source: sourceNode.id,
+            target: parentNode.id,
+            type: 'extends'
+          });
+        }
+      }
+      
+      if (implementsMatch) {
+        const interfaces = implementsMatch[1].split(',').map(i => i.trim());
+        interfaces.forEach(iface => {
+          const ifaceNode = nodeMap.get(iface);
+          if (ifaceNode) {
+            links.push({
+              source: sourceNode.id,
+              target: ifaceNode.id,
+              type: 'implements'
+            });
+          }
+        });
+      }
+    }
   });
 
   return links;

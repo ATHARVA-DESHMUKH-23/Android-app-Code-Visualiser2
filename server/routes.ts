@@ -369,16 +369,23 @@ async function downloadGitHubRepo(owner: string, repo: string): Promise<Array<{ 
   });
 }
 
-// Simple code parser for Java/Kotlin files
+// Enhanced code parser for Java/Kotlin files with relationship detection
 function parseCodeFile(content: string, type: 'java' | 'kotlin') {
-  const components = [];
+  const components: any[] = [];
   const lines = content.split('\n');
+  let currentClass = '';
   
-  // Basic regex patterns for parsing
+  // Enhanced regex patterns for parsing
   const classPattern = /(?:public\s+|private\s+|protected\s+)?(?:static\s+)?(?:final\s+)?(?:abstract\s+)?class\s+(\w+)/;
   const methodPattern = /(?:public\s+|private\s+|protected\s+)?(?:static\s+)?(?:final\s+)?(?:synchronized\s+)?(\w+|\w+<.*?>)\s+(\w+)\s*\([^)]*\)/;
   const interfacePattern = /(?:public\s+|private\s+|protected\s+)?interface\s+(\w+)/;
+  
+  // Patterns to detect method calls and dependencies
+  const methodCallPattern = /(\w+)\s*\(/g;
+  const importPattern = /import\s+(?:static\s+)?([^;]+);/;
+  const fieldPattern = /(?:public\s+|private\s+|protected\s+)?(?:static\s+)?(?:final\s+)?(\w+)\s+(\w+)\s*[=;]/;
 
+  // First pass: collect all components
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].trim();
     
@@ -390,6 +397,7 @@ function parseCodeFile(content: string, type: 'java' | 'kotlin') {
     // Parse classes
     const classMatch = line.match(classPattern);
     if (classMatch) {
+      currentClass = classMatch[1];
       components.push({
         name: classMatch[1],
         type: 'class' as const,
@@ -400,8 +408,9 @@ function parseCodeFile(content: string, type: 'java' | 'kotlin') {
         visibility: getVisibility(line),
         parameters: [],
         returnType: null,
-        dependencies: [],
-        calledBy: []
+        dependencies: extractDependenciesFromLine(line, content),
+        calledBy: [],
+        parentClass: currentClass
       });
       continue;
     }
@@ -409,6 +418,7 @@ function parseCodeFile(content: string, type: 'java' | 'kotlin') {
     // Parse interfaces
     const interfaceMatch = line.match(interfacePattern);
     if (interfaceMatch) {
+      currentClass = interfaceMatch[1];
       components.push({
         name: interfaceMatch[1],
         type: 'interface' as const,
@@ -419,8 +429,9 @@ function parseCodeFile(content: string, type: 'java' | 'kotlin') {
         visibility: getVisibility(line),
         parameters: [],
         returnType: null,
-        dependencies: [],
-        calledBy: []
+        dependencies: extractDependenciesFromLine(line, content),
+        calledBy: [],
+        parentClass: currentClass
       });
       continue;
     }
@@ -448,23 +459,146 @@ function parseCodeFile(content: string, type: 'java' | 'kotlin') {
         }
       }
 
+      // Analyze method body for dependencies and calls
+      const methodBody = extractMethodBody(lines, i);
+      const dependencies = extractMethodDependencies(methodBody, content);
+
       components.push({
         name: methodName,
         type: 'method' as const,
         signature: line,
-        description: `Method ${methodName}`,
+        description: `Method ${methodName} in class ${currentClass}`,
         startLine: i + 1,
         endLine: i + 1,
         visibility: getVisibility(line),
         parameters,
         returnType: returnType !== 'void' ? returnType : null,
-        dependencies: [],
-        calledBy: []
+        dependencies,
+        calledBy: [],
+        parentClass: currentClass
       });
     }
   }
 
+  // Second pass: establish relationships
+  const componentNames = components.map(c => c.name);
+  
+  components.forEach(component => {
+    // Find which components call this one
+    component.calledBy = findCallers(component.name, content, componentNames);
+    
+    // Filter dependencies to only include components in this project
+    component.dependencies = component.dependencies.filter((dep: string) => 
+      componentNames.includes(dep)
+    );
+  });
+
   return components;
+}
+
+// Helper function to extract method body
+function extractMethodBody(lines: string[], startIndex: number): string {
+  let braceCount = 0;
+  let inMethod = false;
+  let methodBody = '';
+  
+  for (let i = startIndex; i < lines.length; i++) {
+    const line = lines[i];
+    
+    if (line.includes('{')) {
+      braceCount += (line.match(/\{/g) || []).length;
+      inMethod = true;
+    }
+    
+    if (inMethod) {
+      methodBody += line + '\n';
+    }
+    
+    if (line.includes('}')) {
+      braceCount -= (line.match(/\}/g) || []).length;
+      if (braceCount <= 0) break;
+    }
+  }
+  
+  return methodBody;
+}
+
+// Helper function to extract dependencies from method body
+function extractMethodDependencies(methodBody: string, fullContent: string): string[] {
+  const dependencies = new Set<string>();
+  
+  // Find method calls
+  const methodCallPattern = /(\w+)\s*\(/g;
+  let match;
+  while ((match = methodCallPattern.exec(methodBody)) !== null) {
+    const methodName = match[1];
+    // Skip common Java/Kotlin keywords and built-ins
+    if (!['if', 'for', 'while', 'switch', 'catch', 'System', 'String', 'Math', 'Log'].includes(methodName)) {
+      dependencies.add(methodName);
+    }
+  }
+  
+  // Find class instantiations
+  const newPattern = /new\s+(\w+)\s*\(/g;
+  while ((match = newPattern.exec(methodBody)) !== null) {
+    dependencies.add(match[1]);
+  }
+  
+  // Find static method calls
+  const staticCallPattern = /(\w+)\.(\w+)\s*\(/g;
+  while ((match = staticCallPattern.exec(methodBody)) !== null) {
+    dependencies.add(match[1]);
+    dependencies.add(match[2]);
+  }
+  
+  return Array.from(dependencies);
+}
+
+// Helper function to extract dependencies from a line
+function extractDependenciesFromLine(line: string, fullContent: string): string[] {
+  const dependencies = new Set<string>();
+  
+  // Find extends relationships
+  const extendsMatch = line.match(/extends\s+(\w+)/);
+  if (extendsMatch) {
+    dependencies.add(extendsMatch[1]);
+  }
+  
+  // Find implements relationships
+  const implementsMatch = line.match(/implements\s+([\w\s,]+)/);
+  if (implementsMatch) {
+    const interfaces = implementsMatch[1].split(',').map(i => i.trim());
+    interfaces.forEach(iface => dependencies.add(iface));
+  }
+  
+  return Array.from(dependencies);
+}
+
+// Helper function to find which components call a specific method/class
+function findCallers(targetName: string, fullContent: string, allComponentNames: string[]): string[] {
+  const callers = new Set<string>();
+  const lines = fullContent.split('\n');
+  
+  lines.forEach((line, index) => {
+    if (line.includes(targetName)) {
+      // Find the containing method or class
+      for (let i = index; i >= 0; i--) {
+        const containerLine = lines[i];
+        const classMatch = containerLine.match(/(?:public\s+|private\s+|protected\s+)?(?:static\s+)?(?:final\s+)?(?:abstract\s+)?class\s+(\w+)/);
+        const methodMatch = containerLine.match(/(?:public\s+|private\s+|protected\s+)?(?:static\s+)?(?:final\s+)?(?:synchronized\s+)?(\w+|\w+<.*?>)\s+(\w+)\s*\([^)]*\)/);
+        
+        if (methodMatch && allComponentNames.includes(methodMatch[2])) {
+          callers.add(methodMatch[2]);
+          break;
+        } else if (classMatch && allComponentNames.includes(classMatch[1])) {
+          callers.add(classMatch[1]);
+          break;
+        }
+      }
+    }
+  });
+  
+  return Array.from(callers);
 }
 
 function getVisibility(line: string): string {

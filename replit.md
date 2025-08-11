@@ -4,6 +4,8 @@
 
 CodeFlow is an interactive web application designed to visualize Android project code structure through dynamic flowcharts. The application enables developers to upload Android projects (Java/Kotlin files) and analyze class relationships, method dependencies, and code architecture through an intuitive visual interface. Users can explore code components, view detailed information about classes and methods, and understand the interconnections within their codebase through interactive diagrams.
 
+**Recent Enhancement (August 11, 2025)**: Added GitHub repository integration allowing users to directly analyze public GitHub repositories by entering a repository URL. The system automatically downloads, parses, and visualizes the code structure with enhanced relationship detection between classes, methods, and dependencies.
+
 ## User Preferences
 
 Preferred communication style: Simple, everyday language.
