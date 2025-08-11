@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { X, Upload, FileCode, Loader2 } from "lucide-react";
+import { X, Upload, FileCode, Loader2, Github, Link } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { type Project } from "@shared/schema";
@@ -14,6 +14,8 @@ export default function FileUpload({ onClose, onSuccess }: FileUploadProps) {
   const [files, setFiles] = useState<File[]>([]);
   const [projectName, setProjectName] = useState("");
   const [projectDescription, setProjectDescription] = useState("");
+  const [githubUrl, setGithubUrl] = useState("");
+  const [uploadMode, setUploadMode] = useState<'files' | 'github'>('files');
   const [includeTests, setIncludeTests] = useState(false);
   const [generateDocs, setGenerateDocs] = useState(true);
   const { toast } = useToast();
@@ -21,17 +23,28 @@ export default function FileUpload({ onClose, onSuccess }: FileUploadProps) {
 
   const uploadMutation = useMutation({
     mutationFn: async () => {
-      const formData = new FormData();
-      
-      files.forEach(file => {
-        formData.append('files', file);
-      });
-      
-      formData.append('name', projectName || 'Untitled Project');
-      formData.append('description', projectDescription);
-      
-      const response = await apiRequest('POST', '/api/projects', formData);
-      return response.json();
+      if (uploadMode === 'github') {
+        // GitHub URL upload
+        const response = await apiRequest('POST', '/api/projects/github', {
+          githubUrl,
+          name: projectName || 'GitHub Project',
+          description: projectDescription,
+        });
+        return response.json();
+      } else {
+        // File upload
+        const formData = new FormData();
+        
+        files.forEach(file => {
+          formData.append('files', file);
+        });
+        
+        formData.append('name', projectName || 'Untitled Project');
+        formData.append('description', projectDescription);
+        
+        const response = await apiRequest('POST', '/api/projects', formData);
+        return response.json();
+      }
     },
     onSuccess: (project: Project) => {
       queryClient.invalidateQueries({ queryKey: ['/api/projects'] });
@@ -70,13 +83,32 @@ export default function FileUpload({ onClose, onSuccess }: FileUploadProps) {
   };
 
   const handleSubmit = () => {
-    if (files.length === 0) {
-      toast({
-        title: "No files selected",
-        description: "Please select at least one file to upload.",
-        variant: "destructive",
-      });
-      return;
+    if (uploadMode === 'github') {
+      if (!githubUrl.trim()) {
+        toast({
+          title: "GitHub URL required",
+          description: "Please enter a valid GitHub repository URL.",
+          variant: "destructive",
+        });
+        return;
+      }
+      if (!githubUrl.includes('github.com')) {
+        toast({
+          title: "Invalid GitHub URL",
+          description: "Please enter a valid GitHub repository URL.",
+          variant: "destructive",
+        });
+        return;
+      }
+    } else {
+      if (files.length === 0) {
+        toast({
+          title: "No files selected",
+          description: "Please select at least one file to upload.",
+          variant: "destructive",
+        });
+        return;
+      }
     }
     uploadMutation.mutate();
   };
@@ -93,6 +125,34 @@ export default function FileUpload({ onClose, onSuccess }: FileUploadProps) {
               data-testid="button-close-upload"
             >
               <X className="h-5 w-5" />
+            </button>
+          </div>
+
+          {/* Upload Mode Tabs */}
+          <div className="flex space-x-1 mb-6 bg-gray-100 rounded-lg p-1">
+            <button
+              onClick={() => setUploadMode('files')}
+              className={`flex-1 flex items-center justify-center space-x-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                uploadMode === 'files' 
+                  ? 'bg-white text-[#0366D6] shadow-sm' 
+                  : 'text-gray-600 hover:text-[#24292E]'
+              }`}
+              data-testid="tab-files"
+            >
+              <Upload className="h-4 w-4" />
+              <span>Upload Files</span>
+            </button>
+            <button
+              onClick={() => setUploadMode('github')}
+              className={`flex-1 flex items-center justify-center space-x-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                uploadMode === 'github' 
+                  ? 'bg-white text-[#0366D6] shadow-sm' 
+                  : 'text-gray-600 hover:text-[#24292E]'
+              }`}
+              data-testid="tab-github"
+            >
+              <Github className="h-4 w-4" />
+              <span>GitHub Repo</span>
             </button>
           </div>
 
@@ -126,33 +186,70 @@ export default function FileUpload({ onClose, onSuccess }: FileUploadProps) {
             </div>
           </div>
 
-          {/* Upload Area */}
-          <div 
-            className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-[#0366D6] transition-colors cursor-pointer"
-            onDrop={handleDrop}
-            onDragOver={handleDragOver}
-            onClick={() => document.getElementById('file-input')?.click()}
-            data-testid="upload-area"
-          >
-            <Upload className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-            <p className="text-lg text-[#24292E] mb-2">Drop your Android project here</p>
-            <p className="text-sm text-gray-600 mb-4">or click to browse files</p>
-            <div className="text-xs text-gray-500">
-              Supported formats: .zip, .jar, or individual .java/.kt files
+          {/* GitHub URL Input */}
+          {uploadMode === 'github' && (
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <Github className="inline h-4 w-4 mr-2" />
+                  GitHub Repository URL
+                </label>
+                <input
+                  type="url"
+                  value={githubUrl}
+                  onChange={(e) => setGithubUrl(e.target.value)}
+                  placeholder="https://github.com/username/repository"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#0366D6] focus:border-transparent"
+                  data-testid="input-github-url"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Enter the URL of a public GitHub repository containing Android Java/Kotlin code
+                </p>
+              </div>
+              
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <div className="flex items-start space-x-3">
+                  <Link className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
+                  <div>
+                    <h4 className="text-sm font-medium text-blue-900 mb-1">GitHub Integration</h4>
+                    <p className="text-sm text-blue-800">
+                      We'll automatically download and analyze the repository's Java and Kotlin files to create your code visualization.
+                    </p>
+                  </div>
+                </div>
+              </div>
             </div>
-            <input
-              id="file-input"
-              type="file"
-              className="hidden"
-              accept=".zip,.jar,.java,.kt"
-              multiple
-              onChange={handleFileSelect}
-              data-testid="input-file"
-            />
-          </div>
+          )}
 
-          {/* Selected Files */}
-          {files.length > 0 && (
+          {/* File Upload Area */}
+          {uploadMode === 'files' && (
+            <div 
+              className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-[#0366D6] transition-colors cursor-pointer"
+              onDrop={handleDrop}
+              onDragOver={handleDragOver}
+              onClick={() => document.getElementById('file-input')?.click()}
+              data-testid="upload-area"
+            >
+              <Upload className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+              <p className="text-lg text-[#24292E] mb-2">Drop your Android project here</p>
+              <p className="text-sm text-gray-600 mb-4">or click to browse files</p>
+              <div className="text-xs text-gray-500">
+                Supported formats: .zip, .jar, or individual .java/.kt files
+              </div>
+              <input
+                id="file-input"
+                type="file"
+                className="hidden"
+                accept=".zip,.jar,.java,.kt"
+                multiple
+                onChange={handleFileSelect}
+                data-testid="input-file"
+              />
+            </div>
+          )}
+
+          {/* Selected Files - only show for file upload mode */}
+          {uploadMode === 'files' && files.length > 0 && (
             <div className="mt-4">
               <h4 className="text-sm font-medium text-gray-700 mb-2">Selected Files ({files.length})</h4>
               <div className="max-h-32 overflow-y-auto space-y-2">
@@ -218,12 +315,22 @@ export default function FileUpload({ onClose, onSuccess }: FileUploadProps) {
             </button>
             <button 
               onClick={handleSubmit}
-              disabled={uploadMutation.isPending || files.length === 0}
+              disabled={uploadMutation.isPending || (uploadMode === 'files' && files.length === 0) || (uploadMode === 'github' && !githubUrl.trim())}
               className="px-4 py-2 bg-[#0366D6] text-white text-sm font-medium rounded-md hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
               data-testid="button-start-analysis"
             >
               {uploadMutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
-              <span>Start Analysis</span>
+              {uploadMode === 'github' ? (
+                <>
+                  <Github className="h-4 w-4" />
+                  <span>Analyze Repository</span>
+                </>
+              ) : (
+                <>
+                  <Upload className="h-4 w-4" />
+                  <span>Start Analysis</span>
+                </>
+              )}
             </button>
           </div>
         </div>

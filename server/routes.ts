@@ -5,6 +5,8 @@ import { storage } from "./storage";
 import { insertProjectSchema, insertProjectFileSchema, insertCodeComponentSchema } from "@shared/schema";
 import { z } from "zod";
 import JSZip from "jszip";
+import https from "https";
+import { Readable } from "stream";
 
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -177,6 +179,91 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // GitHub repository upload
+  app.post("/api/projects/github", async (req, res) => {
+    try {
+      const { githubUrl, name, description } = req.body;
+
+      if (!githubUrl || !githubUrl.includes('github.com')) {
+        return res.status(400).json({ message: "Invalid GitHub URL" });
+      }
+
+      // Extract owner and repo from GitHub URL
+      const urlParts = githubUrl.replace('https://github.com/', '').split('/');
+      if (urlParts.length < 2) {
+        return res.status(400).json({ message: "Invalid GitHub repository URL" });
+      }
+
+      const owner = urlParts[0];
+      const repo = urlParts[1];
+
+      // Create project
+      const projectData = insertProjectSchema.parse({
+        name: name || `${owner}/${repo}`,
+        description: description || `GitHub repository: ${githubUrl}`,
+        status: "analyzing"
+      });
+
+      const project = await storage.createProject(projectData);
+
+      // Download and process GitHub repository
+      try {
+        const files = await downloadGitHubRepo(owner, repo);
+        let totalFiles = 0;
+        let classCount = 0;
+        let methodCount = 0;
+        let functionCount = 0;
+
+        for (const file of files) {
+          if (file.name.endsWith('.java') || file.name.endsWith('.kt')) {
+            const projectFile = await storage.createProjectFile({
+              projectId: project.id,
+              name: file.name.split('/').pop() || file.name,
+              path: file.name,
+              type: file.name.endsWith('.java') ? 'java' : 'kotlin',
+              content: file.content,
+              size: file.content.length
+            });
+
+            // Parse code components
+            const components = parseCodeFile(file.content, file.name.endsWith('.java') ? 'java' : 'kotlin');
+            for (const component of components) {
+              await storage.createCodeComponent({
+                ...component,
+                projectId: project.id,
+                fileId: projectFile.id
+              });
+
+              if (component.type === 'class' || component.type === 'interface') classCount++;
+              else if (component.type === 'method') methodCount++;
+              else if (component.type === 'function') functionCount++;
+            }
+
+            totalFiles++;
+          }
+        }
+
+        // Update project with counts
+        const updatedProject = await storage.updateProject(project.id, {
+          status: "ready",
+          fileCount: totalFiles,
+          classCount,
+          methodCount,
+          functionCount
+        });
+
+        res.json(updatedProject);
+      } catch (downloadError) {
+        console.error("Error downloading GitHub repo:", downloadError);
+        await storage.updateProject(project.id, { status: "error" });
+        res.status(500).json({ message: "Failed to download GitHub repository. Make sure it's a public repository." });
+      }
+    } catch (error) {
+      console.error("Error processing GitHub repository:", error);
+      res.status(500).json({ message: "Failed to process GitHub repository" });
+    }
+  });
+
   // Delete project
   app.delete("/api/projects/:id", async (req, res) => {
     try {
@@ -193,6 +280,93 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   const httpServer = createServer(app);
   return httpServer;
+}
+
+// GitHub repository download function
+async function downloadGitHubRepo(owner: string, repo: string): Promise<Array<{ name: string; content: string }>> {
+  return new Promise((resolve, reject) => {
+    // Use GitHub API to get repository contents
+    const apiUrl = `https://api.github.com/repos/${owner}/${repo}/zipball`;
+    
+    https.get(apiUrl, {
+      headers: {
+        'User-Agent': 'CodeFlow-Analyzer/1.0'
+      }
+    }, (response) => {
+      if (response.statusCode === 302 && response.headers.location) {
+        // Follow redirect to actual zip file
+        https.get(response.headers.location, (zipResponse) => {
+          if (zipResponse.statusCode !== 200) {
+            reject(new Error(`Failed to download: ${zipResponse.statusCode}`));
+            return;
+          }
+
+          const chunks: Buffer[] = [];
+          zipResponse.on('data', chunk => chunks.push(chunk));
+          zipResponse.on('end', async () => {
+            try {
+              const zipBuffer = Buffer.concat(chunks);
+              const zip = new JSZip();
+              const contents = await zip.loadAsync(zipBuffer);
+              
+              const files: Array<{ name: string; content: string }> = [];
+              
+              for (const [filename, zipFile] of Object.entries(contents.files)) {
+                if (!zipFile.dir && (filename.endsWith('.java') || filename.endsWith('.kt'))) {
+                  const content = await zipFile.async('text');
+                  // Remove the top-level directory from the path
+                  const cleanPath = filename.split('/').slice(1).join('/');
+                  if (cleanPath) {
+                    files.push({
+                      name: cleanPath,
+                      content
+                    });
+                  }
+                }
+              }
+              
+              resolve(files);
+            } catch (error) {
+              reject(error);
+            }
+          });
+        }).on('error', reject);
+      } else if (response.statusCode === 200) {
+        // Direct download
+        const chunks: Buffer[] = [];
+        response.on('data', chunk => chunks.push(chunk));
+        response.on('end', async () => {
+          try {
+            const zipBuffer = Buffer.concat(chunks);
+            const zip = new JSZip();
+            const contents = await zip.loadAsync(zipBuffer);
+            
+            const files: Array<{ name: string; content: string }> = [];
+            
+            for (const [filename, zipFile] of Object.entries(contents.files)) {
+              if (!zipFile.dir && (filename.endsWith('.java') || filename.endsWith('.kt'))) {
+                const content = await zipFile.async('text');
+                // Remove the top-level directory from the path
+                const cleanPath = filename.split('/').slice(1).join('/');
+                if (cleanPath) {
+                  files.push({
+                    name: cleanPath,
+                    content
+                  });
+                }
+              }
+            }
+            
+            resolve(files);
+          } catch (error) {
+            reject(error);
+          }
+        });
+      } else {
+        reject(new Error(`GitHub API returned status: ${response.statusCode}`));
+      }
+    }).on('error', reject);
+  });
 }
 
 // Simple code parser for Java/Kotlin files
