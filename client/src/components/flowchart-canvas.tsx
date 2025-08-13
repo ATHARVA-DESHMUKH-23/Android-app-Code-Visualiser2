@@ -151,22 +151,22 @@ export default function FlowchartCanvas({
 
       {/* Canvas */}
       <div 
-        className="flex-1 relative overflow-auto bg-gray-50 cursor-grab active:cursor-grabbing"
-        style={{ 
-          transform: `scale(${zoomLevel / 100}) translate(${panOffset.x}px, ${panOffset.y}px)`,
-          transformOrigin: 'top left'
-        }}
-        onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseUp}
+        className="flex-1 relative overflow-auto bg-gray-50"
         onWheel={handleWheel}
         data-testid="canvas-container"
       >
         <div 
           ref={canvasRef}
-          className="relative min-w-full min-h-full p-8"
-          style={{ cursor: isPanning ? 'grabbing' : 'grab' }}
+          className="relative min-w-full min-h-full p-8 cursor-grab active:cursor-grabbing"
+          style={{ 
+            transform: `scale(${zoomLevel / 100}) translate(${panOffset.x}px, ${panOffset.y}px)`,
+            transformOrigin: 'top left',
+            cursor: isPanning ? 'grabbing' : 'grab'
+          }}
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
+          onMouseLeave={handleMouseUp}
           data-testid="visualization-canvas"
         />
 
