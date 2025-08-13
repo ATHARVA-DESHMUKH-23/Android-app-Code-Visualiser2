@@ -151,10 +151,10 @@ export default function FlowchartCanvas({
 
       {/* Canvas */}
       <div 
-        className="flex-1 relative overflow-hidden bg-gray-50 cursor-grab active:cursor-grabbing"
+        className="flex-1 relative overflow-auto bg-gray-50 cursor-grab active:cursor-grabbing"
         style={{ 
           transform: `scale(${zoomLevel / 100}) translate(${panOffset.x}px, ${panOffset.y}px)`,
-          transformOrigin: 'center center'
+          transformOrigin: 'top left'
         }}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
@@ -165,7 +165,7 @@ export default function FlowchartCanvas({
       >
         <div 
           ref={canvasRef}
-          className="absolute inset-0 p-8"
+          className="relative min-w-full min-h-full p-8"
           style={{ cursor: isPanning ? 'grabbing' : 'grab' }}
           data-testid="visualization-canvas"
         />

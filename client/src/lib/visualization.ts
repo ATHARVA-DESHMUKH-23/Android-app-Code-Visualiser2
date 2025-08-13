@@ -33,19 +33,23 @@ export function createVisualization(
   const nodes = createNodes(components);
   const links = createLinks(components, nodes);
 
-  // Calculate required canvas dimensions
-  const maxX = Math.max(...nodes.map(n => n.x)) + 300;
-  const maxY = Math.max(...nodes.map(n => n.y)) + 150;
+  // Calculate required canvas dimensions with proper padding
+  const maxX = Math.max(...nodes.map(n => n.x)) + 400; // Extra padding for nodes
+  const maxY = Math.max(...nodes.map(n => n.y)) + 200; // Extra padding for nodes
+  const canvasWidth = Math.max(maxX, 1400);
+  const canvasHeight = Math.max(maxY, 900);
   
-  // Set container dimensions to accommodate all nodes
+  // Set container dimensions to accommodate all nodes with scrolling
   container.style.position = 'relative';
-  container.style.width = `${Math.max(maxX, 1200)}px`;
-  container.style.height = `${Math.max(maxY, 800)}px`;
+  container.style.width = `${canvasWidth}px`;
+  container.style.height = `${canvasHeight}px`;
+  container.style.minWidth = '100%';
+  container.style.minHeight = '100%';
 
   // Create SVG container with proper dimensions
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-  svg.style.width = `${Math.max(maxX, 1200)}px`;
-  svg.style.height = `${Math.max(maxY, 800)}px`;
+  svg.style.width = `${canvasWidth}px`;
+  svg.style.height = `${canvasHeight}px`;
   svg.style.position = 'absolute';
   svg.style.top = '0';
   svg.style.left = '0';
@@ -143,10 +147,10 @@ function createNodes(components: CodeComponent[]): Node[] {
   const functions = components.filter(c => c.type === 'function');
 
   const nodeWidth = 200;
-  const horizontalSpacing = 280;
-  const verticalSpacing = 120;
-  const startX = 150;
-  let currentY = 80;
+  const horizontalSpacing = 320; // Increased horizontal spacing
+  const verticalSpacing = 140;   // Increased vertical spacing
+  const startX = 200;            // More left padding
+  let currentY = 100;            // More top padding
 
   // Group methods by their parent class
   const methodsByClass = new Map<string, CodeComponent[]>();
@@ -158,8 +162,9 @@ function createNodes(components: CodeComponent[]): Node[] {
     methodsByClass.get(parentClass)!.push(method);
   });
 
-  // Calculate grid dimensions
-  const itemsPerRow = Math.max(3, Math.min(6, Math.ceil(Math.sqrt(classes.length + methods.length + functions.length))));
+  // Calculate grid dimensions - ensure we have enough horizontal space
+  const totalComponents = classes.length + methods.length + functions.length;
+  const itemsPerRow = Math.max(4, Math.min(7, Math.ceil(Math.sqrt(totalComponents * 1.2))));
 
   // Position classes first
   classes.forEach((component, index) => {
