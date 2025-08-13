@@ -7,6 +7,8 @@ import { z } from "zod";
 import JSZip from "jszip";
 import https from "https";
 import { Readable } from "stream";
+import { ASTParser } from "./ast-parser";
+import { CallFlowTracer } from "./call-flow-tracer";
 
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -275,6 +277,113 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error deleting project:", error);
       res.status(500).json({ message: "Failed to delete project" });
+    }
+  });
+
+  // Get call flow graph for a project starting from an entry method
+  app.post("/api/projects/:id/call-flow", async (req, res) => {
+    try {
+      const { entryMethod } = req.body;
+      const projectId = req.params.id;
+
+      if (!entryMethod) {
+        return res.status(400).json({ message: "Entry method is required" });
+      }
+
+      // Get all project files
+      const files = await storage.getProjectFiles(projectId);
+      if (!files || files.length === 0) {
+        return res.status(404).json({ message: "No files found for project" });
+      }
+
+      // Initialize AST parser and call flow tracer
+      const astParser = new ASTParser();
+      const allClasses: any[] = [];
+
+      // Parse all files to build function map
+      for (const file of files) {
+        const fileExtension = file.name.endsWith('.java') ? 'java' : 'kotlin';
+        const classes = fileExtension === 'java' 
+          ? astParser.parseJavaFile(file.content, file.name)
+          : astParser.parseKotlinFile(file.content, file.name);
+        
+        allClasses.push(...classes);
+      }
+
+      // Build function map
+      const funcMap = astParser.buildFuncMap(allClasses);
+
+      // Initialize call flow tracer
+      const tracer = new CallFlowTracer(funcMap);
+
+      // Generate call flow graph
+      const callFlowGraph = tracer.traceFromEntryMethod(entryMethod);
+
+      // Get available entry methods for the frontend
+      const availableEntryMethods = tracer.getAvailableEntryMethods();
+      const allMethods = tracer.getAllMethods();
+
+      res.json({
+        callFlowGraph,
+        availableEntryMethods,
+        allMethods,
+        totalMethods: allMethods.length,
+        totalClasses: allClasses.length
+      });
+
+    } catch (error) {
+      console.error("Error generating call flow:", error);
+      res.status(500).json({ 
+        message: "Failed to generate call flow", 
+        error: error instanceof Error ? error.message : "Unknown error" 
+      });
+    }
+  });
+
+  // Get available entry methods for a project
+  app.get("/api/projects/:id/entry-methods", async (req, res) => {
+    try {
+      const projectId = req.params.id;
+
+      // Get all project files
+      const files = await storage.getProjectFiles(projectId);
+      if (!files || files.length === 0) {
+        return res.status(404).json({ message: "No files found for project" });
+      }
+
+      // Initialize AST parser
+      const astParser = new ASTParser();
+      const allClasses: any[] = [];
+
+      // Parse all files to build function map
+      for (const file of files) {
+        const fileExtension = file.name.endsWith('.java') ? 'java' : 'kotlin';
+        const classes = fileExtension === 'java' 
+          ? astParser.parseJavaFile(file.content, file.name)
+          : astParser.parseKotlinFile(file.content, file.name);
+        
+        allClasses.push(...classes);
+      }
+
+      // Build function map and get available methods
+      const funcMap = astParser.buildFuncMap(allClasses);
+      const tracer = new CallFlowTracer(funcMap);
+      const availableEntryMethods = tracer.getAvailableEntryMethods();
+      const allMethods = tracer.getAllMethods();
+
+      res.json({
+        entryMethods: availableEntryMethods,
+        allMethods: allMethods,
+        totalMethods: allMethods.length,
+        totalClasses: allClasses.length
+      });
+
+    } catch (error) {
+      console.error("Error fetching entry methods:", error);
+      res.status(500).json({ 
+        message: "Failed to fetch entry methods", 
+        error: error instanceof Error ? error.message : "Unknown error" 
+      });
     }
   });
 

@@ -1,0 +1,105 @@
+Alright — here’s the **prompt you can paste into Replit AI** so it will **upgrade your current regex-based CodeFlow logic** into a full call-flow tracer with branching (if/else/loops) for Android Studio Java/Kotlin projects.
+
+---
+
+**Prompt for Replit AI:**
+
+````
+You are upgrading my current "CodeFlow" backend logic.  
+Currently, it uses regex to extract Java/Kotlin classes, methods, and basic dependencies, then draws a graph in the frontend using SVG + force layout.  
+I want you to replace and enhance the parsing logic so that it can generate **full execution flow diagrams** starting from a selected entry method (e.g., MainActivity.onCreate).
+
+Here is the new logic and requirements:
+
+---
+
+## 1. Parsing Requirements
+- Replace regex parsing with an **AST parser** that supports Java & Kotlin.
+- Use **Tree-sitter** with Java and Kotlin grammars in Node.js to parse the uploaded project files.
+- From the AST, extract:
+  - Function/method declarations
+  - Function calls inside each method
+  - If/else conditions (with true/false branches)
+  - Loops (`for`, `while`)
+  - Class inheritance (`extends`) and interface implementation (`implements`)
+- Ignore calls to Android framework/library methods (Log, Toast, etc.).
+
+## 2. Data Model
+- Build a `funcMap` object:
+```js
+{
+  "MainActivity.onCreate": [
+    { "type": "method_call", "name": "checkPermissions" },
+    { "type": "if_statement", "condition": "permissionsGranted",
+      "trueBranch": [ { "type": "method_call", "name": "initializeComponents" } ],
+      "falseBranch": [ { "type": "method_call", "name": "requestPermissions" } ]
+    },
+    { "type": "method_call", "name": "setupUIListeners" }
+  ],
+  ...
+}
+````
+
+## 3. Tracing Algorithm
+
+* Implement a DFS traversal function:
+
+  * Start from the given entry method (e.g., `MainActivity.onCreate`).
+  * For each statement in the method:
+
+    * If method call → add a node, link it, and recurse into that method.
+    * If if/else → create a decision node, follow both branches.
+    * If loop → create a loop node, follow loop body.
+  * Keep a `visited` set to avoid infinite loops.
+* Output should be an array of `nodes` and `links`:
+
+```js
+{
+  "nodes": [
+    { "id": "onCreate", "type": "method" },
+    { "id": "checkPermissions", "type": "method" },
+    { "id": "if_permissions", "type": "decision" }
+  ],
+  "links": [
+    { "source": "onCreate", "target": "checkPermissions", "type": "calls" },
+    { "source": "if_permissions", "target": "initializeComponents", "branchType": "if_true" }
+  ]
+}
+```
+
+## 4. Visualization Adjustments
+
+* In the frontend:
+
+  * Rectangles for methods
+  * Diamonds for decisions
+  * Loops can be hexagons or another shape
+  * Different edge colors for:
+
+    * Normal calls (blue)
+    * If-true (green)
+    * If-false (red)
+* Add expand/collapse feature for nodes to avoid clutter.
+
+## 5. Workflow
+
+1. Upload project ZIP (already implemented).
+2. Extract files.
+3. Parse with Tree-sitter to build `funcMap`.
+4. Trace starting from user-selected entry method.
+5. Generate `nodes` and `links` JSON.
+6. Render as flowchart in existing SVG frontend.
+
+---
+
+**Deliverable:**
+Update the current backend parsing + link building logic to use Tree-sitter AST parsing and DFS call flow tracing as described, producing a graph JSON that represents full method execution flow including branching and loops.
+
+```
+
+---
+
+If you paste that into Replit AI, it should know **exactly** how to replace your current regex parser with a **Tree-sitter + DFS** system that gives you the branching call-flow you wanted.  
+
+If you want, I can also give you **example Tree-sitter parsing + DFS code in Node.js** so you can test before integrating. That would speed up Replit’s job.
+```

@@ -8,6 +8,8 @@ CodeFlow is an interactive web application designed to visualize Android project
 
 **Migration Complete (August 13, 2025)**: Successfully migrated from Replit Agent to standard Replit environment. Fixed TypeScript compilation errors, improved visualization canvas scrolling and dimensions to prevent flowchart cut-off issues, and ensured all components are properly displayed with adequate spacing.
 
+**AST-Based Call Flow Tracer Upgrade (August 13, 2025)**: Implemented full AST-based call flow tracing system with branching logic analysis. Upgraded from regex-based parsing to enhanced AST parsing that detects method calls, if/else conditions, and loops. Added new CallFlowVisualizer component with interactive execution flow diagrams featuring decision diamonds, loop hexagons, different edge colors for true/false branches, and animation capabilities. Created tabbed interface allowing users to switch between traditional component view and new call flow tracer.
+
 ## User Preferences
 
 Preferred communication style: Simple, everyday language.

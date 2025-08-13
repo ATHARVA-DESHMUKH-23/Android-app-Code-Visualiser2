@@ -5,6 +5,7 @@ import Header from "@/components/header";
 import ProjectSidebar from "@/components/project-sidebar";
 import FlowchartCanvas from "@/components/flowchart-canvas";
 import DetailPanel from "@/components/detail-panel";
+import { CallFlowVisualizer } from "@/components/call-flow-visualizer";
 import FileUpload from "@/components/file-upload";
 import { type Project, type CodeComponent } from "@shared/schema";
 
@@ -13,6 +14,8 @@ export default function Dashboard() {
   const [selectedComponent, setSelectedComponent] = useState<CodeComponent | null>(null);
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [activeTab, setActiveTab] = useState<'traditional' | 'callflow'>('traditional');
+  const [selectedEntryMethod, setSelectedEntryMethod] = useState<string>('');
 
   const { data: projects, isLoading: projectsLoading } = useQuery<Project[]>({
     queryKey: ["/api/projects"],
@@ -30,6 +33,11 @@ export default function Dashboard() {
 
   const { data: files } = useQuery<ProjectFile[]>({
     queryKey: ["/api/projects", params?.id, "files"],
+    enabled: !!params?.id,
+  });
+
+  const { data: entryMethodsData } = useQuery<{entryMethods: string[], allMethods: string[], totalMethods: number, totalClasses: number}>({
+    queryKey: ["/api/projects", params?.id, "entry-methods"],
     enabled: !!params?.id,
   });
 
@@ -67,25 +75,66 @@ export default function Dashboard() {
           data-testid="sidebar"
         />
         
-        <main className="flex-1 flex overflow-hidden">
+        <main className="flex-1 flex flex-col overflow-hidden">
           {currentProject ? (
             <>
-              <FlowchartCanvas 
-                project={currentProject}
-                components={filteredComponents}
-                selectedComponent={selectedComponent}
-                onComponentSelect={handleComponentSelect}
-                isLoading={componentsLoading}
-                data-testid="canvas"
-              />
-              
-              {selectedComponent && (
-                <DetailPanel 
-                  component={selectedComponent}
-                  onClose={() => setSelectedComponent(null)}
-                  data-testid="detail-panel"
-                />
-              )}
+              {/* Tab Navigation */}
+              <div className="flex border-b bg-white px-4">
+                <button
+                  onClick={() => setActiveTab('traditional')}
+                  className={`px-4 py-2 border-b-2 font-medium text-sm transition-colors ${
+                    activeTab === 'traditional'
+                      ? 'border-blue-500 text-blue-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700'
+                  }`}
+                  data-testid="tab-traditional"
+                >
+                  Traditional View
+                </button>
+                <button
+                  onClick={() => setActiveTab('callflow')}
+                  className={`px-4 py-2 border-b-2 font-medium text-sm transition-colors ${
+                    activeTab === 'callflow'
+                      ? 'border-blue-500 text-blue-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700'
+                  }`}
+                  data-testid="tab-callflow"
+                >
+                  Call Flow Tracer
+                </button>
+              </div>
+
+              {/* Tab Content */}
+              <div className="flex-1 flex overflow-hidden">
+                {activeTab === 'traditional' ? (
+                  <>
+                    <FlowchartCanvas 
+                      project={currentProject}
+                      components={filteredComponents}
+                      selectedComponent={selectedComponent}
+                      onComponentSelect={handleComponentSelect}
+                      isLoading={componentsLoading}
+                      data-testid="canvas"
+                    />
+                    
+                    {selectedComponent && (
+                      <DetailPanel 
+                        component={selectedComponent}
+                        onClose={() => setSelectedComponent(null)}
+                        data-testid="detail-panel"
+                      />
+                    )}
+                  </>
+                ) : (
+                  <div className="flex-1 p-4 overflow-auto">
+                    <CallFlowVisualizer
+                      projectId={currentProject.id}
+                      entryMethods={entryMethodsData?.entryMethods || []}
+                      onEntryMethodChange={setSelectedEntryMethod}
+                    />
+                  </div>
+                )}
+              </div>
             </>
           ) : (
             <div className="flex-1 flex items-center justify-center bg-gray-50">
