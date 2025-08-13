@@ -35,6 +35,11 @@ export class MemStorage implements IStorage {
       id,
       uploadedAt: new Date(),
       description: insertProject.description ?? null,
+      status: insertProject.status || "analyzing",
+      fileCount: insertProject.fileCount ?? null,
+      classCount: insertProject.classCount ?? null,
+      methodCount: insertProject.methodCount ?? null,
+      functionCount: insertProject.functionCount ?? null,
     };
     this.projects.set(id, project);
     return project;
@@ -111,9 +116,9 @@ export class MemStorage implements IStorage {
       startLine: insertComponent.startLine ?? null,
       endLine: insertComponent.endLine ?? null,
       returnType: insertComponent.returnType ?? null,
-      parameters: insertComponent.parameters ?? null,
-      dependencies: insertComponent.dependencies ?? null,
-      calledBy: insertComponent.calledBy ?? null,
+      parameters: insertComponent.parameters ? JSON.parse(JSON.stringify(insertComponent.parameters)) : null,
+      dependencies: insertComponent.dependencies ? JSON.parse(JSON.stringify(insertComponent.dependencies)) : null,
+      calledBy: insertComponent.calledBy ? JSON.parse(JSON.stringify(insertComponent.calledBy)) : null,
     };
     this.codeComponents.set(id, component);
     return component;
